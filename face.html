@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="face-api.js"></script>
+</head>
+<body>
+<canvas></canvas>
+<input type="file">
+<script>
+(async () => {
+  faceapi.Gender = { FEMALE: 'female', MALE: 'male' };
+  await faceapi.nets.ssdMobilenetv1.loadFromUri('./ssd_mobilenetv1_model-weights_manifest.json');
+  await faceapi.nets.faceLandmark68Net.loadFromUri('./face_landmark_68_model-weights_manifest.json');
+  await faceapi.nets.faceExpressionNet.loadFromUri('./face_expression_model-weights_manifest.json');
+  await faceapi.nets.ageGenderNet.loadFromUri('./age_gender_model-weights_manifest.json');
+  console.info('Model loaded.');
+})();
+
+document.querySelector('input').onchange = async e => {
+  const canvas = document.querySelector('canvas');
+  const room = canvas.getContext('2d');
+  const people = await faceapi.bufferToImage(e.target.files[0]);
+  
+  canvas.width = people.width;
+  canvas.height = people.height;
+  room.drawImage(people, 0, 0);
+  console.info('Image loaded.');
+  
+  const timer = performance.now();  
+  const faces = await faceapi
+    .detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ maxResults: 50 }))
+    .withFaceLandmarks()
+    .withAgeAndGender()
+    .withFaceExpressions();
+  console.log(faces);
+
+  for (const { detection, gender, age, genderProbability: genderProb, expressions } of faces) {
+    const { x, y, width, height } = detection.box;
+    const emotionProbs = Object.values(expressions);
+    const emotion = Object.keys(expressions)[emotionProbs.indexOf(Math.max(...emotionProbs))];
+    (new faceapi.draw.DrawBox(detection.box, { boxColor: '#0008' })).draw(canvas);
+    (new faceapi.draw.DrawTextField(
+      detection.score.toFixed(2),
+      { x, y },
+      { anchorPosition: 'BOTTOM_LEFT', fontSize: 12, fontStyle: 'Arial' }
+    )).draw(canvas);
+    (new faceapi.draw.DrawTextField(
+      [
+        gender + ' (' + genderProb.toFixed(2) + ')',
+        Math.round(age) + ' yo',
+        emotion + ' (' + expressions[emotion].toFixed(2) + ')'
+      ],
+      { x, y: y + height },
+      { fontSize: 12, fontStyle: 'Arial' }
+    )).draw(canvas);
+  }
+  
+  alert('Done. Elapsed time: ' + ((performance.now() - timer) / 1000 | 0) + 's');
+};
+</script>
+</body>
+</html>
